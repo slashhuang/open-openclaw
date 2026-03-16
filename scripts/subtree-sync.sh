@@ -9,22 +9,41 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 cd "$REPO_ROOT"
 
-# 定义 subtree 配置
-declare -A SUBTREES=(
-    ["claw-family"]="claw-family-upstream"
-    ["futu-openD"]="futu-openD-upstream"
-    ["external-refs/openclaw"]="openclaw-upstream"
-)
+# 定义 subtree 配置 (使用并行数组保证顺序)
+SUBTREE_DIRS=("claw-family" "futu-openD" "external-refs/openclaw")
+SUBTREE_REMOTES=("claw-family-upstream" "futu-openD-upstream" "openclaw-upstream")
 
 # 获取上游分支名（可配置）
 UPSTREAM_BRANCH="${UPSTREAM_BRANCH:-main}"
 LOCAL_BRANCH="${LOCAL_BRANCH:-main}"
 
+get_remote() {
+    local dir="$1"
+    for i in "${!SUBTREE_DIRS[@]}"; do
+        if [[ "${SUBTREE_DIRS[$i]}" == "$dir" ]]; then
+            echo "${SUBTREE_REMOTES[$i]}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+is_valid_subtree() {
+    local dir="$1"
+    for d in "${SUBTREE_DIRS[@]}"; do
+        if [[ "$d" == "$dir" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 show_status() {
     echo "=== Subtree 状态 ==="
     echo ""
-    for dir in "${!SUBTREES[@]}"; do
-        remote="${SUBTREES[$dir]}"
+    for i in "${!SUBTREE_DIRS[@]}"; do
+        dir="${SUBTREE_DIRS[$i]}"
+        remote="${SUBTREE_REMOTES[$i]}"
         echo "📁 $dir"
         echo "   上游 remote: $remote"
         # 显示最后提交
@@ -37,8 +56,9 @@ show_status() {
 pull_all() {
     echo "=== 从上游拉取所有 subtree ==="
     echo ""
-    for dir in "${!SUBTREES[@]}"; do
-        remote="${SUBTREES[$dir]}"
+    for i in "${!SUBTREE_DIRS[@]}"; do
+        dir="${SUBTREE_DIRS[$i]}"
+        remote="${SUBTREE_REMOTES[$i]}"
         echo "🔄 拉取 $dir 从 $remote..."
         git subtree pull --prefix "$dir" "$remote" "$UPSTREAM_BRANCH" --squash || {
             echo "⚠️  $dir 拉取失败，继续下一个..."
@@ -59,10 +79,11 @@ push_all() {
         return 1
     fi
 
-    for dir in "${!SUBTREES[@]}"; do
-        remote="${SUBTREES[$dir]}"
+    for i in "${!SUBTREE_DIRS[@]}"; do
+        dir="${SUBTREE_DIRS[$i]}"
+        remote="${SUBTREE_REMOTES[$i]}"
         # 检查是否有未推送的变更
-        if has_unpushed_changes "$dir"; then
+        if git log "origin/$LOCAL_BRANCH".."$LOCAL_BRANCH" -- "$dir" --quiet 2>/dev/null; then
             echo "🔄 推送 $dir 到 $remote..."
             git subtree push --prefix "$dir" "$remote" "$UPSTREAM_BRANCH" || {
                 echo "⚠️  $dir 推送失败，继续下一个..."
@@ -74,23 +95,17 @@ push_all() {
     echo "✅ 全部推送完成"
 }
 
-has_unpushed_changes() {
-    local dir="$1"
-    # 简化检查：如果有该目录的未推送提交
-    git log "origin/$LOCAL_BRANCH".."$LOCAL_BRANCH" -- "$dir" --quiet 2>/dev/null
-}
-
 sync_one() {
     local dir="$1"
     local action="${2:-pull}"
 
-    if [[ -z "${SUBTREES[$dir]}" ]]; then
+    if ! is_valid_subtree "$dir"; then
         echo "❌ 未知的 subtree: $dir"
-        echo "可用的 subtree: ${!SUBTREES[@]}"
+        echo "可用的 subtree: ${SUBTREE_DIRS[*]}"
         return 1
     fi
 
-    remote="${SUBTREES[$dir]}"
+    remote=$(get_remote "$dir")
 
     if [[ "$action" == "pull" ]]; then
         echo "🔄 拉取 $dir 从 $remote..."
