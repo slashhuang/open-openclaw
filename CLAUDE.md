@@ -18,7 +18,26 @@
 
 ## 常用命令
 
-### 同步上游代码
+### 使用同步脚本（推荐）
+
+```bash
+# 查看所有 subtree 状态
+./scripts/subtree-sync.sh status
+
+# 从上游拉取所有 subtree 更新
+./scripts/subtree-sync.sh pull
+
+# 推送所有 subtree 到上游（有确认提示）
+./scripts/subtree-sync.sh push
+
+# 同步单个 subtree
+./scripts/subtree-sync.sh sync claw-family
+./scripts/subtree-sync.sh sync claw-family push
+```
+
+### 手动命令
+
+**同步上游代码**
 
 ```bash
 # 拉取 claw-family 更新
