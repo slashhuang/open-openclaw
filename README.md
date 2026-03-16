@@ -43,9 +43,16 @@ git subtree push --prefix claw-family claw-family-upstream main
 git subtree push --prefix futu-openD futu-openD-upstream main
 ```
 
-## 远程仓库配置
+## 远程仓库
 
-当前配置了以下上游仓库：
+| Remote 名称 | URL | 用途 |
+|------------|-----|------|
+| origin | git@github.com:slashhuang/claw-sources | **本 monorepo** |
+| claw-family-upstream | git@github.com:slashhuang/claw-family | 主仓库 |
+| futu-openD-upstream | git@github.com:slashhuang/futu-openD | 一方代码 |
+| openclaw-upstream | git@github.com:openclaw/openclaw | 外部参考 |
+
+## 上游仓库配置
 
 | Remote 名称 | URL | 用途 |
 |------------|-----|------|
