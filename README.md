@@ -20,7 +20,26 @@ claw-sources/
 
 ## Git Subtree 同步
 
-### 从上游拉取更新
+### 使用同步脚本（推荐）
+
+```bash
+# 查看所有 subtree 状态
+./scripts/subtree-sync.sh status
+
+# 从上游拉取所有 subtree 更新
+./scripts/subtree-sync.sh pull
+
+# 推送所有 subtree 到上游
+./scripts/subtree-sync.sh push
+
+# 同步单个 subtree
+./scripts/subtree-sync.sh sync claw-family
+./scripts/subtree-sync.sh sync claw-family push
+```
+
+### 手动命令
+
+**从上游拉取更新**
 
 ```bash
 # 同步 claw-family
@@ -43,8 +62,6 @@ git subtree push --prefix claw-family claw-family-upstream main
 git subtree push --prefix futu-openD futu-openD-upstream main
 ```
 
-## 远程仓库
-
 | Remote 名称 | URL | 用途 |
 |------------|-----|------|
 | origin | git@github.com:slashhuang/claw-sources | **本 monorepo** |
@@ -52,13 +69,15 @@ git subtree push --prefix futu-openD futu-openD-upstream main
 | futu-openD-upstream | git@github.com:slashhuang/futu-openD | 一方代码 |
 | openclaw-upstream | git@github.com:openclaw/openclaw | 外部参考 |
 
-## 上游仓库配置
+## Subtree 配置说明
 
-| Remote 名称 | URL | 用途 |
-|------------|-----|------|
-| claw-family-upstream | git@github.com:slashhuang/claw-family | 主仓库 |
-| futu-openD-upstream | git@github.com:slashhuang/futu-openD | 一方代码 |
-| openclaw-upstream | git@github.com:openclaw/openclaw | 外部参考 |
+每个 subtree 目录都配置了独立的 upstream remote，可以独立同步：
+
+| 目录 | Upstream Remote | 分支 |
+|------|----------------|------|
+| claw-family | claw-family-upstream | main |
+| futu-openD | futu-openD-upstream | main |
+| external-refs/openclaw | openclaw-upstream | main |
 
 ## 拆分出独立仓库
 

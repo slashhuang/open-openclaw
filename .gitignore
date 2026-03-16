@@ -1,8 +1,10 @@
 # Monorepo workspace
 .DS_Store
 
-# External refs - read-only subtrees (managed separately)
-external-refs/
+# External refs - partial ignore
+# Note: external-refs/openclaw is tracked as subtree
+# Only ignore new external refs that may be added
+external-refs/.gitkeep
 
 # Node modules
 **/node_modules/
