@@ -1,8 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
+import { Injectable, Logger } from '@nestjs/common';
+import { OpenClawService } from '../openclaw/openclaw.service';
 
 export interface Session {
   sessionKey: string;
@@ -11,6 +8,13 @@ export interface Session {
   status: 'active' | 'idle' | 'completed' | 'failed';
   lastActive: number;
   duration: number;
+  tokenUsage?: {
+    input: number;
+    output: number;
+    total: number;
+    limit?: number;
+    utilization?: number; // 0-100%
+  };
 }
 
 export interface SessionDetail extends Session {
@@ -24,70 +28,78 @@ export interface SessionDetail extends Session {
     duration: number;
     success: boolean;
   }>;
+  events: Array<{
+    type: string;
+    timestamp: number;
+    payload: any;
+  }>;
 }
 
 @Injectable()
 export class SessionsService {
+  private readonly logger = new Logger(SessionsService.name);
+
+  constructor(private openclawService: OpenClawService) {}
+
   async listSessions(): Promise<Session[]> {
     try {
-      // TODO: 调用 OpenClaw sessions_list API
-      // 暂时返回模拟数据
-      return [
-        {
-          sessionKey: 'calm-lagoon',
-          sessionId: 'session_001',
-          user: 'ou_31fd1b6d3639ffaf1e4d70c5de2f5ef4',
-          status: 'active',
-          lastActive: Date.now(),
-          duration: 120000,
-        },
-        {
-          sessionKey: 'tidal-bloom',
-          sessionId: 'session_002',
-          user: 'ou_31fd1b6d3639ffaf1e4d70c5de2f5ef4',
-          status: 'completed',
-          lastActive: Date.now() - 300000,
-          duration: 300000,
-        },
-      ];
+      const sessions = await this.openclawService.listSessions();
+
+      return sessions.map((s) => ({
+        sessionKey: s.sessionKey,
+        sessionId: s.sessionId,
+        user: s.userId || 'unknown',
+        status: s.status,
+        lastActive: s.lastActiveAt,
+        duration: Date.now() - s.createdAt,
+        tokenUsage: s.tokenUsage && 'limit' in s.tokenUsage && s.tokenUsage.limit
+          ? {
+              ...s.tokenUsage,
+              utilization: Math.round((s.tokenUsage.total / s.tokenUsage.limit) * 100),
+            }
+          : s.tokenUsage as any,
+      }));
     } catch (error) {
-      console.error('Failed to list sessions:', error);
+      this.logger.error('Failed to list sessions:', error);
       return [];
     }
   }
 
   async getSessionById(id: string): Promise<SessionDetail | null> {
     try {
-      // TODO: 调用 OpenClaw sessions_history API
+      const detail = await this.openclawService.getSessionDetail(id);
+
+      if (!detail) {
+        return null;
+      }
+
       return {
-        sessionKey: 'calm-lagoon',
-        sessionId: id,
-        user: 'ou_31fd1b6d3639ffaf1e4d70c5de2f5ef4',
-        status: 'active',
-        lastActive: Date.now(),
-        duration: 120000,
-        messages: [
-          {
-            role: 'user',
-            content: '你好',
-            timestamp: Date.now() - 120000,
-          },
-          {
-            role: 'assistant',
-            content: '你好！我是阿布，有什么可以帮你的吗？',
-            timestamp: Date.now() - 119000,
-          },
-        ],
-        toolCalls: [
-          {
-            tool: 'memory_search',
-            duration: 150,
-            success: true,
-          },
-        ],
+        sessionKey: detail.sessionKey,
+        sessionId: detail.sessionId,
+        user: detail.userId || 'unknown',
+        status: detail.status,
+        lastActive: detail.lastActiveAt,
+        duration: Date.now() - detail.createdAt,
+        tokenUsage: detail.tokenUsage && 'limit' in detail.tokenUsage && detail.tokenUsage.limit
+          ? {
+              ...detail.tokenUsage,
+              utilization: Math.round((detail.tokenUsage.total / detail.tokenUsage.limit) * 100),
+            }
+          : detail.tokenUsage as any,
+        messages: (detail.messages || []).map((m: any) => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+          timestamp: m.timestamp,
+        })),
+        toolCalls: (detail.toolCalls || []).map((t: any) => ({
+          tool: t.name,
+          duration: t.durationMs,
+          success: t.success,
+        })),
+        events: detail.events || [],
       };
     } catch (error) {
-      console.error('Failed to get session:', error);
+      this.logger.error('Failed to get session detail:', error);
       return null;
     }
   }
@@ -98,13 +110,6 @@ export class SessionsService {
   }
 
   async killSession(id: string): Promise<boolean> {
-    try {
-      // TODO: 调用 OpenClaw sessions_kill API
-      console.log('Killing session:', id);
-      return true;
-    } catch (error) {
-      console.error('Failed to kill session:', error);
-      return false;
-    }
+    return this.openclawService.killSession(id);
   }
 }
