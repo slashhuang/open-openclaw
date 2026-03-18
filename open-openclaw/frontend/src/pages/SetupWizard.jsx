@@ -1,279 +1,201 @@
 import React, { useState } from 'react';
+import { Card, Steps, Form, Input, Button, Space, Row, Col, Typography, message, Tag } from 'antd';
+import { useIntl } from 'react-intl';
 import { setupApi } from '../api';
 
 export default function SetupWizard({ onComplete }) {
-  const [step, setStep] = useState(1);
-  const [gatewayUrl, setGatewayUrl] = useState('http://localhost:18789');
-  const [gatewayToken, setGatewayToken] = useState('');
-  const [gatewayPassword, setGatewayPassword] = useState('');
-  const [accessMode, setAccessMode] = useState('local-only');
-  const [accessToken, setAccessToken] = useState('');
+  const intl = useIntl();
+  const [step, setStep] = useState(0);
+  const [form] = Form.useForm();
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [testResult, setTestResult] = useState(null);
-  const [error, setError] = useState(null);
+  const [connected, setConnected] = useState(false);
 
-  const handleTestConnection = async () => {
+  const gatewayUrl = Form.useWatch('openclawGatewayUrl', form) || 'http://localhost:18789';
+  const accessMode = Form.useWatch('accessMode', form) || 'local-only';
+  const accessToken = Form.useWatch('accessToken', form);
+
+  const handleTest = async () => {
+    const v = await form.validateFields(['openclawGatewayUrl']).catch(() => null);
+    if (!v) return;
     setTesting(true);
-    setError(null);
     try {
+      const vals = form.getFieldsValue();
       const result = await setupApi.testConnection({
-        openclawGatewayUrl: gatewayUrl,
-        openclawGatewayToken: gatewayToken || undefined,
-        openclawGatewayPassword: gatewayPassword || undefined,
+        openclawGatewayUrl: vals.openclawGatewayUrl,
+        openclawGatewayToken: vals.openclawGatewayToken || undefined,
+        openclawGatewayPassword: vals.openclawGatewayPassword || undefined,
       });
-      setTestResult(result);
-    } catch (err) {
-      setError(`测试失败：${err.message}`);
+      setConnected(!!result.connected);
+      if (result.connected) {
+        message.success(result.message || 'OK');
+      } else {
+        message.error(result.error || result.message || 'Failed');
+      }
+    } catch (e) {
+      message.error(e?.message || 'Error');
+      setConnected(false);
     } finally {
       setTesting(false);
     }
   };
 
-  const handleGenerateToken = async () => {
+  const handleGenerate = async () => {
     try {
-      const result = await setupApi.generateToken();
-      setAccessToken(result.token);
-    } catch (err) {
-      setError(`生成 Token 失败：${err.message}`);
+      const r = await setupApi.generateToken();
+      form.setFieldsValue({ accessToken: r.token });
+    } catch (e) {
+      message.error(e?.message || 'Error');
     }
   };
 
-  const handleSaveAndComplete = async () => {
+  const handleFinish = async () => {
     setSaving(true);
-    setError(null);
     try {
+      const vals = form.getFieldsValue();
       await setupApi.configure({
-        openclawGatewayUrl: gatewayUrl,
-        openclawGatewayToken: gatewayToken || undefined,
-        openclawGatewayPassword: gatewayPassword || undefined,
-        accessMode,
-        accessToken: accessMode === 'token' ? accessToken : undefined,
+        openclawGatewayUrl: vals.openclawGatewayUrl,
+        openclawGatewayToken: vals.openclawGatewayToken || undefined,
+        openclawGatewayPassword: vals.openclawGatewayPassword || undefined,
+        accessMode: vals.accessMode,
+        accessToken: vals.accessMode === 'token' ? vals.accessToken : undefined,
       });
       onComplete();
-    } catch (err) {
-      setError(`保存配置失败：${err.message}`);
+    } catch (e) {
+      message.error(e?.message || 'Error');
     } finally {
       setSaving(false);
     }
   };
 
-  const canProceedFromStep1 = testResult?.connected;
-  const canProceedFromStep2 = accessMode !== 'token' || accessToken;
+  const modes = [
+    { value: 'local-only', label: intl.formatMessage({ id: 'mode.local' }), desc: intl.formatMessage({ id: 'mode.local.desc' }) },
+    { value: 'token', label: intl.formatMessage({ id: 'mode.token' }), desc: intl.formatMessage({ id: 'mode.token.desc' }) },
+    { value: 'none', label: intl.formatMessage({ id: 'mode.none' }), desc: intl.formatMessage({ id: 'mode.none.desc' }) },
+  ];
 
   return (
-    <div className="setup-wizard">
-      <div className="setup-card">
-        <h1 className="setup-title">🦞 OpenClaw Monitor</h1>
-        <p className="setup-subtitle">首次启动设置向导</p>
-
-        {error && (
-          <div className="message message-error">
-            {error}
-          </div>
-        )}
-
-        {/* Step 1: Connect Gateway */}
-        {step === 1 && (
-          <div>
-            <h3 className="card-title" style={{ marginBottom: '1rem' }}>步骤 1：连接 OpenClaw Gateway</h3>
-            <p className="text-muted" style={{ marginBottom: '1.5rem' }}>
-              输入 OpenClaw Gateway 的地址，我们将测试连接是否正常。
-            </p>
-
-            <div className="form-group">
-              <label className="form-label">Gateway URL</label>
-              <input
-                type="text"
-                className="form-input"
-                value={gatewayUrl}
-                onChange={(e) => setGatewayUrl(e.target.value)}
-                placeholder="http://localhost:18789"
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Gateway Token（鉴权用，可选）</label>
-              <input
-                type="password"
-                className="form-input"
-                value={gatewayToken}
-                onChange={(e) => setGatewayToken(e.target.value)}
-                placeholder="OPENCLAW_GATEWAY_TOKEN"
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Gateway Password（可选）</label>
-              <input
-                type="password"
-                className="form-input"
-                value={gatewayPassword}
-                onChange={(e) => setGatewayPassword(e.target.value)}
-                placeholder="系统或共享密码"
-              />
-            </div>
-
-            {testResult && (
-              <div className={`message ${testResult.connected ? 'message-success' : 'message-error'}`}>
-                {testResult.connected
-                  ? `✓ ${testResult.message || '连接成功！配置已自动保存。'}`
-                  : `✗ 连接失败：${testResult.error || testResult.message}`}
-              </div>
-            )}
-
-            <div className="flex" style={{ marginTop: '1.5rem' }}>
-              <button
-                className="btn btn-secondary"
-                onClick={handleTestConnection}
-                disabled={testing}
-              >
-                {testing ? '测试中...' : '测试连接'}
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={() => setStep(2)}
-                disabled={!canProceedFromStep1}
-                style={{ marginLeft: 'auto' }}
-              >
-                下一步
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 2: Access Protection */}
-        {step === 2 && (
-          <div>
-            <h3 className="card-title" style={{ marginBottom: '1rem' }}>步骤 2：访问保护</h3>
-            <p className="text-muted" style={{ marginBottom: '1.5rem' }}>
-              选择访问保护模式。个人使用推荐「仅本地」，公开部署推荐「Token」。
-            </p>
-
-            <div className="mode-cards">
-              {[
-                { value: 'local-only', icon: '🔒', label: '仅本地', desc: '只允许本机访问，最安全' },
-                { value: 'token', icon: '🔑', label: 'Token', desc: '使用 Bearer Token 认证' },
-                { value: 'none', icon: '🔓', label: '公开', desc: '无保护，任何人可访问' },
-              ].map(mode => (
-                <div
-                  key={mode.value}
-                  className={`mode-card ${accessMode === mode.value ? 'selected' : ''}`}
-                  onClick={() => setAccessMode(mode.value)}
-                >
-                  <div className="mode-card-icon">{mode.icon}</div>
-                  <div className="mode-card-title">{mode.label}</div>
-                  <div className="mode-card-desc">{mode.desc}</div>
-                </div>
-              ))}
-            </div>
-
-            {accessMode === 'token' && (
-              <div className="form-group mt-4">
-                <label className="form-label">Access Token</label>
-                <div className="flex">
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={accessToken}
-                    onChange={(e) => setAccessToken(e.target.value)}
-                    placeholder="输入或生成 Token"
-                    style={{ flex: 1 }}
-                  />
-                  <button
-                    className="btn btn-secondary"
-                    onClick={handleGenerateToken}
-                    style={{ marginLeft: '0.5rem' }}
-                  >
-                    生成
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="flex" style={{ marginTop: '1.5rem' }}>
-              <button
-                className="btn btn-secondary"
-                onClick={() => setStep(1)}
-              >
-                上一步
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={() => setStep(3)}
-                disabled={!canProceedFromStep2}
-                style={{ marginLeft: 'auto' }}
-              >
-                下一步
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Confirm */}
-        {step === 3 && (
-          <div>
-            <h3 className="card-title" style={{ marginBottom: '1rem' }}>步骤 3：确认配置</h3>
-            <p className="text-muted" style={{ marginBottom: '1.5rem' }}>
-              请确认以下配置信息，然后点击「完成设置」开始使用。
-            </p>
-
-            <div className="card" style={{ background: 'rgba(0, 0, 0, 0.2)', marginBottom: '1.5rem' }}>
-              <div className="flex flex-between" style={{ padding: '0.75rem 0', borderBottom: '1px solid var(--border)' }}>
-                <span className="text-muted">Gateway URL</span>
-                <span>{gatewayUrl}</span>
-              </div>
-              {gatewayToken && (
-                <div className="flex flex-between" style={{ padding: '0.75rem 0', borderBottom: '1px solid var(--border)' }}>
-                  <span className="text-muted">Gateway Token</span>
-                  <span className="text-muted text-sm">已配置</span>
-                </div>
-              )}
-              <div className="flex flex-between" style={{ padding: '0.75rem 0', borderBottom: '1px solid var(--border)' }}>
-                <span className="text-muted">访问模式</span>
-                <span className="badge">{accessMode}</span>
-              </div>
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+        background: 'var(--ant-color-bg-layout)',
+      }}
+    >
+      <Card style={{ maxWidth: 640, width: '100%' }} title={<Typography.Title level={3} style={{ margin: 0 }}>🦞 {intl.formatMessage({ id: 'setup.wizard.title' })}</Typography.Title>}>
+        <Typography.Paragraph type="secondary">{intl.formatMessage({ id: 'setup.wizard.subtitle' })}</Typography.Paragraph>
+        <Steps
+          current={step}
+          style={{ marginBottom: 24 }}
+          items={[
+            { title: intl.formatMessage({ id: 'setup.step1.title' }).split('：')[0] || '1' },
+            { title: intl.formatMessage({ id: 'setup.step2.title' }).split('：')[0] || '2' },
+            { title: intl.formatMessage({ id: 'setup.step3.title' }).split('：')[0] || '3' },
+          ]}
+        />
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{
+            openclawGatewayUrl: 'http://localhost:18789',
+            accessMode: 'local-only',
+          }}
+        >
+          {step === 0 && (
+            <>
+              <Typography.Title level={5}>{intl.formatMessage({ id: 'setup.step1.title' })}</Typography.Title>
+              <Typography.Paragraph type="secondary">{intl.formatMessage({ id: 'setup.step1.desc' })}</Typography.Paragraph>
+              <Form.Item name="openclawGatewayUrl" label={intl.formatMessage({ id: 'setup.gatewayUrl' })} rules={[{ required: true }]}>
+                <Input placeholder="http://localhost:18789" />
+              </Form.Item>
+              <Form.Item name="openclawGatewayToken" label={intl.formatMessage({ id: 'setup.gatewayToken' })}>
+                <Input.Password />
+              </Form.Item>
+              <Form.Item name="openclawGatewayPassword" label={intl.formatMessage({ id: 'setup.gatewayPassword' })}>
+                <Input.Password />
+              </Form.Item>
+              <Space>
+                <Button onClick={handleTest} loading={testing}>
+                  {testing ? intl.formatMessage({ id: 'setup.testing' }) : intl.formatMessage({ id: 'setup.test' })}
+                </Button>
+                <Button type="primary" disabled={!connected} onClick={() => setStep(1)}>
+                  {intl.formatMessage({ id: 'setup.next' })}
+                </Button>
+              </Space>
+            </>
+          )}
+          {step === 1 && (
+            <>
+              <Typography.Title level={5}>{intl.formatMessage({ id: 'setup.step2.title' })}</Typography.Title>
+              <Typography.Paragraph type="secondary">{intl.formatMessage({ id: 'setup.step2.desc' })}</Typography.Paragraph>
+              <Form.Item name="accessMode" label={intl.formatMessage({ id: 'settings.access' })}>
+                <Row gutter={[12, 12]}>
+                  {modes.map((m) => (
+                    <Col span={8} key={m.value}>
+                      <Card
+                        size="small"
+                        hoverable
+                        onClick={() => form.setFieldsValue({ accessMode: m.value })}
+                        style={{
+                          borderColor: accessMode === m.value ? 'var(--ant-color-primary)' : undefined,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Typography.Text strong>{m.label}</Typography.Text>
+                        <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>{m.desc}</Typography.Text></div>
+                      </Card>
+                    </Col>
+                  ))}
+                </Row>
+              </Form.Item>
               {accessMode === 'token' && (
-                <div className="flex flex-between" style={{ padding: '0.75rem 0' }}>
-                  <span className="text-muted">Access Token</span>
-                  <span className="text-muted text-sm">{accessToken.slice(0, 8)}...</span>
-                </div>
+                <Form.Item
+                  name="accessToken"
+                  label={intl.formatMessage({ id: 'setup.accessToken' })}
+                  rules={[{ required: true, message: 'Required' }]}
+                >
+                  <Input
+                    addonAfter={
+                      <Button type="link" size="small" onClick={handleGenerate} style={{ padding: 0 }}>
+                        {intl.formatMessage({ id: 'setup.generate' })}
+                      </Button>
+                    }
+                  />
+                </Form.Item>
               )}
-            </div>
-
-            <div className="flex" style={{ marginTop: '1.5rem' }}>
-              <button
-                className="btn btn-secondary"
-                onClick={() => setStep(2)}
-              >
-                上一步
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={handleSaveAndComplete}
-                disabled={saving}
-                style={{ marginLeft: 'auto' }}
-              >
-                {saving ? '保存中...' : '完成设置'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Progress Indicator */}
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '2rem', gap: '0.5rem' }}>
-          {[1, 2, 3].map(i => (
-            <div
-              key={i}
-              style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: i === step ? 'var(--primary)' : 'var(--border)',
-              }}
-            />
-          ))}
-        </div>
-      </div>
+              <Space>
+                <Button onClick={() => setStep(0)}>{intl.formatMessage({ id: 'setup.prev' })}</Button>
+                <Button
+                  type="primary"
+                  disabled={accessMode === 'token' && !accessToken}
+                  onClick={() => setStep(2)}
+                >
+                  {intl.formatMessage({ id: 'setup.next' })}
+                </Button>
+              </Space>
+            </>
+          )}
+          {step === 2 && (
+            <>
+              <Typography.Title level={5}>{intl.formatMessage({ id: 'setup.step3.title' })}</Typography.Title>
+              <Typography.Paragraph type="secondary">{intl.formatMessage({ id: 'setup.step3.desc' })}</Typography.Paragraph>
+              <Card size="small" style={{ marginBottom: 16 }}>
+                <div><Typography.Text type="secondary">Gateway URL</Typography.Text> <span>{gatewayUrl}</span></div>
+                <div><Typography.Text type="secondary">{intl.formatMessage({ id: 'settings.access' })}</Typography.Text> <Tag style={{ marginLeft: 8 }}>{accessMode}</Tag></div>
+              </Card>
+              <Space>
+                <Button onClick={() => setStep(1)}>{intl.formatMessage({ id: 'setup.prev' })}</Button>
+                <Button type="primary" loading={saving} onClick={handleFinish}>
+                  {saving ? intl.formatMessage({ id: 'setup.saving' }) : intl.formatMessage({ id: 'setup.complete' })}
+                </Button>
+              </Space>
+            </>
+          )}
+        </Form>
+      </Card>
     </div>
   );
 }

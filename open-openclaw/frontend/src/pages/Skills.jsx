@@ -1,294 +1,195 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import {
+  Card,
+  Row,
+  Col,
+  Statistic,
+  Table,
+  Tabs,
+  Typography,
+  Spin,
+  Tag,
+  Space,
+  theme,
+} from 'antd';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from 'recharts';
+import { useIntl } from 'react-intl';
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
+const COLORS = ['#1677ff', '#52c41a', '#faad14', '#ff7a45', '#722ed1', '#13c2c2'];
 
 export default function Skills() {
+  const intl = useIntl();
+  const { token } = theme.useToken();
   const [skills, setSkills] = useState([]);
   const [systemPrompt, setSystemPrompt] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('list'); // 'list' | 'analysis'
+  const [tab, setTab] = useState('list');
 
   useEffect(() => {
-    fetchData();
+    (async () => {
+      try {
+        const [skillsRes, spRes] = await Promise.all([
+          fetch('/api/skills/usage'),
+          fetch('/api/skills/system-prompt/analysis'),
+        ]);
+        setSkills(await skillsRes.json());
+        setSystemPrompt(await spRes.json());
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
-  const fetchData = async () => {
-    try {
-      const [skillsRes, systemPromptRes] = await Promise.all([
-        fetch('/api/skills/usage'),
-        fetch('/api/skills/system-prompt/analysis')
-      ]);
-      
-      const skillsData = await skillsRes.json();
-      const systemPromptData = await systemPromptRes.json();
-      
-      setSkills(skillsData);
-      setSystemPrompt(systemPromptData);
-    } catch (error) {
-      console.error('Failed to fetch skills data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 准备图表数据
-  const callFrequencyData = skills
-    .filter(s => s.callCount > 0)
+  const callFrequencyData = (skills || [])
+    .filter((s) => s.callCount > 0)
     .sort((a, b) => b.callCount - a.callCount)
     .slice(0, 10)
-    .map(s => ({ name: s.name, count: s.callCount }));
+    .map((s) => ({ name: s.name, count: s.callCount }));
 
-  const tokenDistributionData = [
-    { name: '活跃 Skills', value: systemPrompt?.activeSkillsTokens || 0 },
-    { name: '僵尸 Skills', value: systemPrompt?.zombieSkillsTokens || 0 },
-    { name: '重复 Skills', value: systemPrompt?.duplicateSkillsTokens || 0 },
-  ];
+  const tokenDistributionData = systemPrompt
+    ? [
+        { name: 'Active', value: systemPrompt.activeSkillsTokens || 0 },
+        { name: 'Zombie', value: systemPrompt.zombieSkillsTokens || 0 },
+        { name: 'Dup', value: systemPrompt.duplicateSkillsTokens || 0 },
+      ]
+    : [];
 
-  const zombieSkills = skills.filter(s => s.lastUsed && s.lastUsed < Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const duplicateSkills = skills.filter(s => s.duplicateWith && s.duplicateWith.length > 0);
+  const zombieSkills = (skills || []).filter(
+    (s) => s.lastUsed && s.lastUsed < Date.now() - 30 * 24 * 60 * 60 * 1000,
+  );
+  const duplicateSkills = (skills || []).filter((s) => s.duplicateWith?.length > 0);
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>;
+    return <Spin style={{ display: 'block', margin: 48 }} />;
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Skills 使用分析</h1>
-        <p className="text-gray-600 mt-1">分析 skills 调用频率、识别僵尸 skills 和重复 skills</p>
-      </div>
-
-      {/* 标签页 */}
-      <div className="mb-6 border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
-          <button
-            onClick={() => setActiveTab('list')}
-            className={`${activeTab === 'list' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-          >
-            Skills 清单
-          </button>
-          <button
-            onClick={() => setActiveTab('analysis')}
-            className={`${activeTab === 'analysis' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
-          >
-            SystemPrompt 分析
-          </button>
-        </nav>
-      </div>
-
-      {activeTab === 'list' && (
-        <div className="space-y-6">
-          {/* 统计卡片 */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-white p-4 rounded-lg shadow">
-              <div className="text-sm text-gray-600">总 Skills</div>
-              <div className="text-2xl font-bold text-gray-900">{skills.length}</div>
-            </div>
-            <div className="bg-white p-4 rounded-lg shadow">
-              <div className="text-sm text-gray-600">活跃 Skills</div>
-              <div className="text-2xl font-bold text-green-600">{skills.filter(s => s.enabled).length}</div>
-            </div>
-            <div className="bg-white p-4 rounded-lg shadow">
-              <div className="text-sm text-gray-600">僵尸 Skills</div>
-              <div className="text-2xl font-bold text-red-600">{zombieSkills.length}</div>
-            </div>
-            <div className="bg-white p-4 rounded-lg shadow">
-              <div className="text-sm text-gray-600">重复 Skills</div>
-              <div className="text-2xl font-bold text-orange-600">{duplicateSkills.length}</div>
-            </div>
-          </div>
-
-          {/* 调用频率 Top 10 */}
-          {callFrequencyData.length > 0 && (
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h2 className="text-lg font-semibold mb-4">调用频率 Top 10</h2>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={callFrequencyData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="count" fill="#8884d8" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {/* Skills 列表 */}
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold">Skills 详情</h2>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">名称</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">调用次数</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">最后使用</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">警告</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {skills.map((skill, index) => (
-                    <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{skill.name}</div>
-                        <div className="text-sm text-gray-500">{skill.description?.substring(0, 50)}...</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${skill.enabled ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                          {skill.enabled ? '启用' : '禁用'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{skill.tokenCount}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{skill.callCount}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {skill.lastUsed ? new Date(skill.lastUsed).toLocaleDateString() : '从未'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {skill.duplicateWith && skill.duplicateWith.length > 0 && (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 mr-2">
-                            重复
-                          </span>
-                        )}
-                        {skill.lastUsed && skill.lastUsed < Date.now() - 30 * 24 * 60 * 60 * 1000 && (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                            僵尸
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'analysis' && systemPrompt && (
-        <div className="space-y-6">
-          {/* SystemPrompt 概览 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h2 className="text-lg font-semibold mb-4">Token 分布</h2>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={tokenDistributionData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, value }) => `${name}: ${value.toLocaleString()} tokens`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {tokenDistributionData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h2 className="text-lg font-semibold mb-4">优化建议</h2>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">当前 SystemPrompt</span>
-                  <span className="text-lg font-bold text-gray-900">{systemPrompt.totalTokens.toLocaleString()} tokens</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-600">优化后 SystemPrompt</span>
-                  <span className="text-lg font-bold text-green-600">{(systemPrompt.totalTokens - systemPrompt.savings).toLocaleString()} tokens</span>
-                </div>
-                <div className="flex justify-between items-center pt-4 border-t">
-                  <span className="text-gray-600">可节省</span>
-                  <span className="text-lg font-bold text-green-600">{systemPrompt.savings.toLocaleString()} tokens ({systemPrompt.savingsPercent}%)</span>
-                </div>
-              </div>
-
-              <div className="mt-6">
-                <h3 className="font-medium mb-2">具体建议：</h3>
-                <ul className="space-y-2">
-                  {systemPrompt.recommendations.map((rec, index) => (
-                    <li key={index} className="flex items-start">
-                      <span className="flex-shrink-0 h-6 w-6 flex items-center justify-center rounded-full bg-blue-100 text-blue-800 text-xs font-medium mr-2">
-                        {index + 1}
-                      </span>
-                      <span className="text-gray-700">{rec}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          {/* 僵尸 Skills 列表 */}
-          {zombieSkills.length > 0 && (
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h2 className="text-lg font-semibold mb-4 text-red-600">僵尸 Skills（30 天未使用）</h2>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">名称</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Token</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">最后使用</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {zombieSkills.map((skill, index) => (
-                      <tr key={index}>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{skill.name}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{skill.tokenCount}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{skill.lastUsed ? new Date(skill.lastUsed).toLocaleDateString() : '从未'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* 重复 Skills 列表 */}
-          {duplicateSkills.length > 0 && (
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h2 className="text-lg font-semibold mb-4 text-orange-600">重复 Skills</h2>
-              <div className="space-y-4">
-                {duplicateSkills.map((skill, index) => (
-                  <div key={index} className="border border-orange-200 rounded-lg p-4">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className="font-medium text-gray-900">{skill.name}</h3>
-                        <p className="text-sm text-gray-500 mt-1">{skill.description}</p>
-                      </div>
-                      <span className="text-sm text-gray-500">{skill.tokenCount} tokens</span>
-                    </div>
-                    <div className="mt-3">
-                      <span className="text-sm text-gray-600">与以下 skills 重复：</span>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {skill.duplicateWith?.map((dupe, i) => (
-                          <span key={i} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                            {dupe}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+    <div>
+      <Typography.Title level={4}>{intl.formatMessage({ id: 'skills.title' })}</Typography.Title>
+      <Typography.Paragraph type="secondary">{intl.formatMessage({ id: 'skills.subtitle' })}</Typography.Paragraph>
+      <Tabs
+        activeKey={tab}
+        onChange={setTab}
+        items={[
+          {
+            key: 'list',
+            label: intl.formatMessage({ id: 'skills.tabList' }),
+            children: (
+              <>
+                <Row gutter={16} style={{ marginBottom: 16 }}>
+                  <Col xs={12} sm={6}><Card><Statistic title="Total" value={skills.length} /></Card></Col>
+                  <Col xs={12} sm={6}><Card><Statistic title="Enabled" value={skills.filter((s) => s.enabled).length} valueStyle={{ color: token.colorSuccess }} /></Card></Col>
+                  <Col xs={12} sm={6}><Card><Statistic title="Zombie" value={zombieSkills.length} valueStyle={{ color: token.colorError }} /></Card></Col>
+                  <Col xs={12} sm={6}><Card><Statistic title="Dup" value={duplicateSkills.length} valueStyle={{ color: token.colorWarning }} /></Card></Col>
+                </Row>
+                {callFrequencyData.length > 0 && (
+                  <Card title="Top 10" style={{ marginBottom: 16 }}>
+                    <ResponsiveContainer width="100%" height={280}>
+                      <BarChart data={callFrequencyData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={token.colorBorderSecondary} />
+                        <XAxis dataKey="name" tick={{ fill: token.colorTextSecondary, fontSize: 10 }} />
+                        <YAxis tick={{ fill: token.colorTextSecondary }} />
+                        <Tooltip contentStyle={{ background: token.colorBgElevated }} />
+                        <Bar dataKey="count" fill={token.colorPrimary} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </Card>
+                )}
+                <Card>
+                  <Table
+                    rowKey={(r) => r.name}
+                    dataSource={skills}
+                    scroll={{ x: true }}
+                    columns={[
+                      {
+                        title: 'Name',
+                        dataIndex: 'name',
+                        render: (n, r) => (
+                          <div>
+                            <Typography.Text strong>{n}</Typography.Text>
+                            <div><Typography.Text type="secondary" ellipsis style={{ maxWidth: 280 }}>{r.description}</Typography.Text></div>
+                          </div>
+                        ),
+                      },
+                      {
+                        title: 'Status',
+                        render: (_, r) => <Tag color={r.enabled ? 'green' : 'red'}>{r.enabled ? 'On' : 'Off'}</Tag>,
+                      },
+                      { title: 'Tokens', dataIndex: 'tokenCount' },
+                      { title: 'Calls', dataIndex: 'callCount' },
+                      {
+                        title: 'Last',
+                        dataIndex: 'lastUsed',
+                        render: (t) => (t ? new Date(t).toLocaleDateString(intl.locale) : '—'),
+                      },
+                      {
+                        title: 'Flags',
+                        render: (_, r) => (
+                          <Space>
+                            {r.duplicateWith?.length > 0 && <Tag color="orange">Dup</Tag>}
+                            {r.lastUsed && r.lastUsed < Date.now() - 30 * 24 * 60 * 60 * 1000 && <Tag color="red">Zombie</Tag>}
+                          </Space>
+                        ),
+                      },
+                    ]}
+                  />
+                </Card>
+              </>
+            ),
+          },
+          {
+            key: 'analysis',
+            label: intl.formatMessage({ id: 'skills.tabAnalysis' }),
+            children: systemPrompt ? (
+              <Row gutter={[16, 16]}>
+                <Col xs={24} lg={12}>
+                  <Card title="Token split">
+                    <ResponsiveContainer width="100%" height={300}>
+                      <PieChart>
+                        <Pie data={tokenDistributionData} cx="50%" cy="50%" outerRadius={90} dataKey="value" label>
+                          {tokenDistributionData.map((_, i) => (
+                            <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </Card>
+                </Col>
+                <Col xs={24} lg={12}>
+                  <Card title="Savings">
+                    <Statistic title="Current" value={systemPrompt.totalTokens} />
+                    <Statistic title="After" value={systemPrompt.totalTokens - systemPrompt.savings} valueStyle={{ color: token.colorSuccess }} />
+                    <Typography.Paragraph>
+                      Save {systemPrompt.savings} ({systemPrompt.savingsPercent}%)
+                    </Typography.Paragraph>
+                    <ul style={{ paddingLeft: 20 }}>
+                      {(systemPrompt.recommendations || []).map((rec, i) => (
+                        <li key={i}><Typography.Text>{rec}</Typography.Text></li>
+                      ))}
+                    </ul>
+                  </Card>
+                </Col>
+              </Row>
+            ) : (
+              <Typography.Text type="secondary">—</Typography.Text>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }
