@@ -5,10 +5,9 @@
 set -e
 
 # 获取 GITHUB_TOKEN
-# 优先级：全局环境变量 > 项目 .env 文件 > ~/.zshrc 中的 GH_TOKEN
+# 优先级：环境变量 GITHUB_TOKEN 或 GH_TOKEN > 项目 .env 文件
 get_token() {
-    # 1️⃣ 优先使用全局环境变量 GITHUB_TOKEN 或 GH_TOKEN
-    #    这两个变量可以在 ~/.zshrc、~/.bashrc 或启动脚本中设置
+    # 1️⃣ 优先使用环境变量（直接读取，无需解析 bashrc）
     if [ -n "$GITHUB_TOKEN" ]; then
         echo "$GITHUB_TOKEN"
         return 0
@@ -19,29 +18,13 @@ get_token() {
         return 0
     fi
 
-    # 2️⃣ 从项目 .env 文件读取（本地开发备用）
+    # 2️⃣ 从项目 .env 文件读取（备用）
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local repo_root="$(cd "$script_dir/../../.." && pwd)"
     local env_file="$repo_root/.env"
 
     if [ -f "$env_file" ]; then
-        local token=$(grep -o 'GITHUB_TOKEN=[^[:space:]]*' "$env_file" 2>/dev/null | cut -d'=' -f2)
-        if [ -n "$token" ]; then
-            echo "$token"
-            return 0
-        fi
-    fi
-
-    # 3️⃣ 从 ~/.zshrc 或 ~/.bashrc 读取（云端服务器备用）
-    local home_rc=""
-    if [ -f "$HOME/.zshrc" ]; then
-        home_rc="$HOME/.zshrc"
-    elif [ -f "$HOME/.bashrc" ]; then
-        home_rc="$HOME/.bashrc"
-    fi
-
-    if [ -n "$home_rc" ]; then
-        local token=$(grep -o 'GH_TOKEN=[^[:space:]]*' "$home_rc" 2>/dev/null | cut -d'=' -f2 | tr -d '"')
+        local token=$(grep -E '^GITHUB_TOKEN=' "$env_file" 2>/dev/null | tail -1 | cut -d'=' -f2)
         if [ -n "$token" ]; then
             echo "$token"
             return 0
@@ -53,10 +36,12 @@ get_token() {
     cat >&2 << 'EOF'
 Error: GITHUB_TOKEN not found.
 
-Please set GITHUB_TOKEN in one of these ways:
-1. Global env: export GITHUB_TOKEN="ghp_xxx" in ~/.zshrc or ~/.bashrc
-2. Project .env: Create .env file in repo root with GITHUB_TOKEN=ghp_xxx
-3. Startup script: Set before running openclaw
+Please set environment variable before running:
+  export GITHUB_TOKEN="ghp_xxx"
+  # or
+  export GH_TOKEN="ghp_xxx"
+
+Or create .env file in repo root with GITHUB_TOKEN=ghp_xxx
 
 EOF
     return 1
@@ -103,16 +88,14 @@ create_pr() {
     fi
     
     # 调用 GitHub API 创建 PR
+    # 注意：body 中的换行符需要转义为 \n
+    local escaped_body=$(echo "$body" | sed ':a;N;$!ba;s/\n/\\n/g' | sed 's/"/\\"/g')
+    
     local response=$(curl -s -X POST \
         -H "Authorization: token $token" \
         -H "Accept: application/vnd.github.v3+json" \
         "$GITHUB_API/repos/$repo/pulls" \
-        -d "{
-            \"title\": \"$title\",
-            \"body\": \"$body\",
-            \"head\": \"$head\",
-            \"base\": \"$base\"
-        }")
+        -d "{\"title\": \"$title\", \"body\": \"$escaped_body\", \"head\": \"$head\", \"base\": \"$base\"}")
     
     # 解析响应
     local pr_number=$(echo "$response" | grep -o '"number": *[0-9]*' | grep -o '[0-9]*')
