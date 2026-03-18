@@ -1,9 +1,5 @@
-import { Controller, Get, Header, Logger } from '@nestjs/common';
-import {
-  SkillsService,
-  SkillUsage,
-  SystemPromptAnalysis,
-} from './skills.service';
+import { Controller, Get, Logger } from '@nestjs/common';
+import { SkillsService, SkillUsage, SystemPromptAnalysis } from './skills.service';
 
 @Controller('api/skills')
 export class SkillsController {
@@ -12,20 +8,20 @@ export class SkillsController {
   constructor(private readonly skillsService: SkillsService) {}
 
   /**
-   * 获取所有 skills 的使用情况（从缓存返回）
+   * 获取所有 skills 的使用情况
    */
   @Get('usage')
   async getSkillsUsage(): Promise<SkillUsage[]> {
-    return await this.skillsService.getCachedSkills();
+    this.logger.log('Getting skills usage');
+    return await this.skillsService.getAllSkills();
   }
 
   /**
-   * 分析 SystemPrompt（从缓存返回，鉴权成功后由 refreshCache 预加载）
-   * Cache-Control 避免浏览器返回 304 导致展示过期数据
+   * 分析 SystemPrompt
    */
   @Get('system-prompt/analysis')
-  @Header('Cache-Control', 'no-cache, max-age=60')
   async analyzeSystemPrompt(): Promise<SystemPromptAnalysis> {
-    return await this.skillsService.getCachedAnalysis();
+    this.logger.log('Analyzing system prompt');
+    return await this.skillsService.analyzeSystemPrompt();
   }
 }

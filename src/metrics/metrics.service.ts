@@ -48,14 +48,11 @@ export interface LatencyMetrics {
 
 export interface TokenUsageBySession {
   sessionKey: string;
-  sessionId?: string;
   totalTokens: number;
   inputTokens: number;
   outputTokens: number;
   requestCount: number;
   avgUtilization?: number;
-  /** 模型 context 上限（用于展示阈值） */
-  tokenLimit?: number;
   limitReachedCount?: number;
 }
 
@@ -318,13 +315,11 @@ export class MetricsService implements OnModuleInit {
 
     const result = this.db.exec(
       `SELECT session_key,
-              MAX(session_id) as session_id,
               SUM(total_tokens) as total_tokens,
               SUM(input_tokens) as input_tokens,
               SUM(output_tokens) as output_tokens,
               COUNT(*) as request_count,
-              AVG(utilization) as avg_utilization,
-              MAX(token_limit) as token_limit
+              AVG(utilization) as avg_utilization
        FROM token_usage
        WHERE timestamp > ?
        GROUP BY session_key
@@ -352,13 +347,11 @@ export class MetricsService implements OnModuleInit {
 
     return result[0].values.map((row) => ({
       sessionKey: row[0] as string,
-      sessionId: row[1] as string,
-      totalTokens: row[2] as number,
-      inputTokens: row[3] as number,
-      outputTokens: row[4] as number,
-      requestCount: row[5] as number,
-      avgUtilization: row[6] as number,
-      tokenLimit: typeof row[7] === 'number' ? row[7] : undefined,
+      totalTokens: row[1] as number,
+      inputTokens: row[2] as number,
+      outputTokens: row[3] as number,
+      requestCount: row[4] as number,
+      avgUtilization: row[5] as number,
       limitReachedCount: limitReachedMap.get(row[0] as string) || 0,
     }));
   }

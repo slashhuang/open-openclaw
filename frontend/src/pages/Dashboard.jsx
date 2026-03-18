@@ -145,9 +145,8 @@ export default function Dashboard() {
 
   const fetchData = async () => {
     try {
-      const [healthData, statusData, sessionsData, logsData, latencyData, toolsData, tokenSummaryData, tokenUsageData] = await Promise.all([
+      const [healthData, sessionsData, logsData, latencyData, toolsData, tokenSummaryData, tokenUsageData] = await Promise.all([
         healthApi.getHealth().catch(() => null),
-        statusApi.getOverview().catch(() => null),
         sessionsApi.list().catch(() => []),
         logsApi.getRecent(10).catch(() => []),
         metricsApi.getLatency().catch(() => ({ p50: 0, p95: 0, p99: 0, count: 0 })),
@@ -156,7 +155,6 @@ export default function Dashboard() {
         metricsApi.getTokenUsage().catch(() => []),
       ]);
       setHealth(healthData);
-      setStatusOverview(statusData?.error ? null : statusData);
       setSessions(Array.isArray(sessionsData) ? sessionsData : []);
       setRecentLogs(Array.isArray(logsData) ? logsData : []);
       setMetrics({
@@ -232,10 +230,7 @@ export default function Dashboard() {
       {/* Token 用量汇总 */}
       {metrics.tokenSummary && (
         <div className="card mt-4">
-          <h3 className="card-title" style={{ marginBottom: '0.5rem' }}>💰 Token 用量汇总 (过去 24 小时)</h3>
-          <p className="text-muted" style={{ fontSize: '0.7rem', marginBottom: '1rem' }}>
-            预警 = 某次采集时会话上下文使用率 ≥ 80% 记录 1 次 · 触顶 = 使用率 ≥ 100% 记录 1 次 · 每 30 秒采集
-          </p>
+          <h3 className="card-title" style={{ marginBottom: '1rem' }}>💰 Token 用量汇总 (过去 24 小时)</h3>
           <div className="grid" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
             <StatCard value={metrics.tokenSummary.totalInput?.toLocaleString() || '0'} label="Input Tokens" color="primary" />
             <StatCard value={metrics.tokenSummary.totalOutput?.toLocaleString() || '0'} label="Output Tokens" color="success" />
@@ -246,14 +241,12 @@ export default function Dashboard() {
               label="预警次数"
               color={metrics.tokenSummary.nearLimitCount > 0 ? 'warning' : 'success'}
               icon={metrics.tokenSummary.nearLimitCount > 0 ? '⚠️' : undefined}
-              hint="过去 24h 内，会话 token 使用率 ≥ 80% 时记录的事件次数"
             />
             <StatCard
               value={metrics.tokenSummary.limitReachedCount || '0'}
               label="触顶次数"
               color={metrics.tokenSummary.limitReachedCount > 0 ? 'danger' : 'success'}
               icon={metrics.tokenSummary.limitReachedCount > 0 ? '🚨' : undefined}
-              hint="过去 24h 内，会话 token 使用率达到 100% 时记录的事件次数"
             />
           </div>
         </div>
@@ -333,111 +326,56 @@ export default function Dashboard() {
       {/* Session Key Token 用量排行 */}
       {metrics.tokenUsage && metrics.tokenUsage.length > 0 && (
         <div className="card mt-4">
-          <h3 className="card-title" style={{ marginBottom: '0.5rem' }}>Session Key Token 用量 Top 10 (过去 24 小时)</h3>
-          <p className="text-muted" style={{ fontSize: '0.7rem', marginBottom: '1rem' }}>
-            触顶次数 = 该会话在采集周期内 token 使用率 ≥ 100% 的次数
-          </p>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="table" style={{ minWidth: '720px' }}>
-              <thead>
-                <tr>
-                  <th>类型</th>
-                  <th>会话</th>
-                  <th>用户</th>
-                  <th>总 Token</th>
-                  <th>In / Out</th>
-                  <th>请求</th>
-                  <th>模型 / 利用率</th>
-                  <th>触顶</th>
-                </tr>
-              </thead>
+          <h3 className="card-title">Session Key Token 用量 Top 10 (过去 24 小时)</h3>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Session Key</th>
+                <th>总 Token</th>
+                <th>Input</th>
+                <th>Output</th>
+                <th>请求数</th>
+                <th>平均利用率</th>
+                <th>触顶次数</th>
+              </tr>
+            </thead>
             <tbody>
-              {[...metrics.tokenUsage]
-                .sort((a, b) => {
-                  const typeA = sessions.find((s) => s.sessionId === a.sessionId || s.sessionKey === a.sessionKey)?.typeLabel ?? inferSessionTypeLabel(a.sessionKey);
-                  const typeB = sessions.find((s) => s.sessionId === b.sessionId || s.sessionKey === b.sessionKey)?.typeLabel ?? inferSessionTypeLabel(b.sessionKey);
-                  const orderA = TYPE_SORT_ORDER[typeA] ?? 5;
-                  const orderB = TYPE_SORT_ORDER[typeB] ?? 5;
-                  if (orderA !== orderB) return orderA - orderB;
-                  return (b.totalTokens ?? 0) - (a.totalTokens ?? 0);
-                })
-                .map((item, index) => {
-                const matchedSession = sessions.find(
-                  (s) => s.sessionId === item.sessionId || s.sessionKey === item.sessionKey
-                );
-                const typeLabel = matchedSession?.typeLabel ?? inferSessionTypeLabel(item.sessionKey);
-                const user = (typeLabel === 'heartbeat' || typeLabel === 'cron') ? typeLabel : (matchedSession?.user || '-');
-                const limit = item.tokenLimit;
-                const fallbackId = (item.sessionId || '').includes('/') ? (item.sessionId || '').split('/').pop() : (item.sessionId || item.sessionKey);
-                const detailId = (matchedSession?.sessionId ?? fallbackId);
-                return (
-                  <tr key={item.sessionKey}>
-                    <td>
-                      <span className="badge" style={{ fontSize: '0.65rem', background: typeLabel === 'heartbeat' ? 'rgba(72,187,120,0.3)' : typeLabel === 'cron' ? 'rgba(237,137,54,0.3)' : 'rgba(102,126,234,0.3)' }}>
-                        {typeLabel}
-                      </span>
-                    </td>
-                    <td>
-                      {detailId ? (
-                        <Link
-                          to={`/sessions/${encodeURIComponent(detailId)}`}
-                          style={{ color: 'var(--primary)', fontWeight: 500 }}
-                          title={item.sessionKey}
-                        >
-                          {formatSessionShort(item.sessionId, item.sessionKey)}
-                        </Link>
-                      ) : (
-                        <span title={item.sessionKey}>{formatSessionShort(item.sessionId, item.sessionKey)}</span>
-                      )}
-                    </td>
-                    <td className="text-muted text-sm">{user}</td>
-                    <td>
-                      <span style={{ color: 'var(--primary)' }} title={`${(item.totalTokens || 0).toLocaleString()} tokens`}>
-                        {item.totalTokens != null ? `${(item.totalTokens / 1000).toFixed(1)}k` : '-'}
-                      </span>
-                    </td>
-                    <td className="text-muted text-sm">
-                      {formatTokenShort(item.inputTokens || 0)} / {formatTokenShort(item.outputTokens || 0)}
-                    </td>
-                    <td className="text-muted text-sm">{item.requestCount || 0}</td>
-                    <td>
-                      {item.avgUtilization != null ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          {limit != null && (
-                            <span className="text-muted text-sm" title={`阈值 ${(limit / 1000).toFixed(0)}k`}>
-                              {(limit / 1000).toFixed(0)}k
-                            </span>
-                          )}
-                          <div className="flex" style={{ alignItems: 'center', gap: '0.5rem' }}>
-                            <div className="progress-bar" style={{ width: '60px' }}>
-                              <div
-                                className="progress-fill"
-                                style={{
-                                  width: `${Math.min(item.avgUtilization, 100)}%`,
-                                  background: item.avgUtilization > 80 ? 'var(--danger)' : 'var(--success)',
-                                }}
-                              />
-                            </div>
-                            <span className="text-muted text-sm">{Math.round(item.avgUtilization || 0)}%</span>
-                          </div>
+              {metrics.tokenUsage.map((item, index) => (
+                <tr key={item.sessionKey}>
+                  <td style={{ fontWeight: '600' }}>{index + 1}. {item.sessionKey}</td>
+                  <td style={{ color: 'var(--primary)' }}>{item.totalTokens?.toLocaleString() || 0}</td>
+                  <td className="text-muted">{item.inputTokens?.toLocaleString() || 0}</td>
+                  <td className="text-muted">{item.outputTokens?.toLocaleString() || 0}</td>
+                  <td className="text-muted">{item.requestCount || 0}</td>
+                  <td>
+                    {item.avgUtilization ? (
+                      <div className="flex" style={{ alignItems: 'center', gap: '0.5rem' }}>
+                        <div className="progress-bar" style={{ width: '80px' }}>
+                          <div
+                            className="progress-fill"
+                            style={{
+                              width: `${Math.min(item.avgUtilization, 100)}%`,
+                              background: item.avgUtilization > 80 ? 'var(--danger)' : 'var(--success)',
+                            }}
+                          />
                         </div>
-                      ) : (
-                        <span className="text-muted">N/A</span>
-                      )}
-                    </td>
-                    <td>
-                      {item.limitReachedCount > 0 ? (
-                        <span style={{ color: 'var(--danger)' }}>🚨 {item.limitReachedCount}</span>
-                      ) : (
-                        <span className="text-muted">-</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                        <span className="text-muted text-sm">{Math.round(item.avgUtilization)}%</span>
+                      </div>
+                    ) : (
+                      <span className="text-muted">N/A</span>
+                    )}
+                  </td>
+                  <td>
+                    {item.limitReachedCount > 0 ? (
+                      <span style={{ color: 'var(--danger)' }}>🚨 {item.limitReachedCount}</span>
+                    ) : (
+                      <span className="text-muted">-</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
-          </div>
         </div>
       )}
 

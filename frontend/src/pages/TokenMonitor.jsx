@@ -17,15 +17,6 @@ const THRESHOLD_LABELS = {
   limit: '已用尽',
 };
 
-function inferSessionTypeLabel(sessionKey) {
-  const key = sessionKey || '';
-  const full = key.includes('/') ? key.split('/').pop() || key : key;
-  if (full.endsWith(':main') || full === 'main') return 'heartbeat';
-  if (full.includes(':cron:')) return 'cron';
-  if (full.includes(':cron')) return 'cron';
-  return null;
-}
-
 export default function TokenMonitor() {
   const [sessions, setSessions] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -217,7 +208,6 @@ export default function TokenMonitor() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">会话</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">用户</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">使用率</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">已用 Token</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">限制</th>
@@ -230,9 +220,6 @@ export default function TokenMonitor() {
                   <tr key={index} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">{session.sessionKey}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {inferSessionTypeLabel(session.sessionKey) || session.user || '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
