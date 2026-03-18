@@ -140,13 +140,12 @@ export default function Sessions() {
         <table className="table">
           <thead>
             <tr>
-              <SortableTh label="类型" sortKey="typeLabel" currentSort={sortBy} sortOrder={sortOrder} onSort={handleSort} />
-              <SortableTh label="时长" sortKey="duration" currentSort={sortBy} sortOrder={sortOrder} onSort={handleSort} />
-              <SortableTh label="总 Token" sortKey="totalTokens" currentSort={sortBy} sortOrder={sortOrder} onSort={handleSort} />
-              <SortableTh label="模型 / 阈值" sortKey="utilization" currentSort={sortBy} sortOrder={sortOrder} onSort={handleSort} />
-              <SortableTh label="状态" sortKey="status" currentSort={sortBy} sortOrder={sortOrder} onSort={handleSort} />
-              <SortableTh label="用户" sortKey="user" currentSort={sortBy} sortOrder={sortOrder} onSort={handleSort} />
-              <SortableTh label="最后活跃" sortKey="lastActive" currentSort={sortBy} sortOrder={sortOrder} onSort={handleSort} />
+              <th>Session Key</th>
+              <th>状态</th>
+              <th>用户</th>
+              <th>最后活跃</th>
+              <th>持续时间</th>
+              <th>Token 利用率</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -154,17 +153,8 @@ export default function Sessions() {
             {filteredSessions.map(session => (
               <tr key={session.sessionId}>
                 <td>
-                  <span className="badge" style={{ fontSize: '0.7rem', background: session.typeLabel === 'heartbeat' ? 'rgba(72,187,120,0.3)' : session.typeLabel === 'cron' ? 'rgba(237,137,54,0.3)' : 'rgba(102,126,234,0.3)' }}>
-                    {session.typeLabel || '用户'}
-                  </span>
-                </td>
-                <td>
-                  <Link
-                    to={`/sessions/${session.sessionId}`}
-                    style={{ color: 'var(--primary)', fontWeight: 500 }}
-                    title={`${session.sessionKey || session.sessionId}`}
-                  >
-                    {formatDuration(session.duration)}
+                  <Link to={`/sessions/${session.sessionId}`} style={{ color: 'var(--primary)' }}>
+                    {session.sessionKey || session.sessionId.slice(0, 8)}-{session.sessionId.slice(8, 12)}...
                   </Link>
                 </td>
                 <td>
@@ -198,6 +188,11 @@ export default function Sessions() {
                   {new Date(session.lastActive).toLocaleString('zh-CN')}
                 </td>
                 <td>
+                  {session.tokenUsage ? formatTokenUtilization(session.tokenUsage) : (
+                    <span className="text-muted">-</span>
+                  )}
+                </td>
+                <td>
                   <div className="flex">
                     <Link
                       to={`/sessions/${session.sessionId}`}
@@ -221,7 +216,7 @@ export default function Sessions() {
             ))}
             {filteredSessions.length === 0 && (
               <tr>
-                <td colSpan="8" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
+                <td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
                   暂无会话
                 </td>
               </tr>

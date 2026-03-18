@@ -22,50 +22,22 @@ export class MetricsModule implements OnModuleInit {
   }
 
   private startTokenCollection() {
-    const NEAR_LIMIT_THRESHOLD = 80; // 使用率 ≥ 80% 记预警
     const collect = async () => {
       try {
         const sessions = await this.openclawService.listSessions();
-        const now = Date.now();
         for (const session of sessions) {
           if (session.tokenUsage) {
-            const utilization = session.tokenUsage.utilization ?? (session.tokenUsage.limit && session.tokenUsage.total
-              ? Math.round((session.tokenUsage.total / session.tokenUsage.limit) * 100)
-              : 0);
             await this.metricsService.recordTokenUsage({
-              id: `token-${session.sessionId}-${now}`,
-              timestamp: now,
+              id: `token-${session.sessionId}-${Date.now()}`,
+              timestamp: Date.now(),
               sessionKey: session.sessionKey,
               sessionId: session.sessionId,
               inputTokens: session.tokenUsage.input || 0,
               outputTokens: session.tokenUsage.output || 0,
               totalTokens: session.tokenUsage.total || 0,
               tokenLimit: session.tokenUsage.limit,
-              utilization,
+              utilization: session.tokenUsage.utilization,
             });
-            if (utilization >= 100) {
-              await this.metricsService.recordTokenEvent({
-                id: `event-limit-${session.sessionId}-${now}`,
-                timestamp: now,
-                sessionKey: session.sessionKey,
-                sessionId: session.sessionId,
-                eventType: 'token:limit_reached',
-                threshold: 100,
-                currentUsage: session.tokenUsage.total,
-                limit: session.tokenUsage.limit,
-              });
-            } else if (utilization >= NEAR_LIMIT_THRESHOLD) {
-              await this.metricsService.recordTokenEvent({
-                id: `event-near-${session.sessionId}-${now}`,
-                timestamp: now,
-                sessionKey: session.sessionKey,
-                sessionId: session.sessionId,
-                eventType: 'token:near_limit',
-                threshold: NEAR_LIMIT_THRESHOLD,
-                currentUsage: session.tokenUsage.total,
-                limit: session.tokenUsage.limit,
-              });
-            }
           }
         }
         console.log(`Token usage collected for ${sessions.length} sessions`);

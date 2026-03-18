@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 
 const COLORS = ['#10B981', '#F59E0B', '#F97316', '#EF4444'];
 
@@ -40,28 +39,12 @@ export default function SystemPromptOptimization() {
     return <div className="p-6 text-center text-gray-500">暂无数据</div>;
   }
 
-  const totalKB = analysis.totalBytes ? (analysis.totalBytes / 1024).toFixed(1) : null;
-  const contextWindow = 200000;
-  const usagePercent = analysis.estimatedTokens
-    ? Math.round((analysis.estimatedTokens / contextWindow) * 100)
-    : null;
-  const controllableBytes = analysis.layers
-    ?.filter((l) => l.controllable)
-    .reduce((s, l) => s + l.bytes, 0) ?? 0;
-  const teamCustomPercent = analysis.totalBytes
-    ? Math.round((controllableBytes / analysis.totalBytes) * 100)
-    : null;
-
-  // Token 分布数据（按 layers 或 fallback 到 skills）
-  const tokenDistribution = analysis.layers?.length
-    ? analysis.layers
-        .filter((l) => l.tokenCount > 0)
-        .map((l) => ({ name: l.label, value: l.tokenCount, color: l.color }))
-    : [
-        { name: '活跃 Skills', value: analysis.activeSkillsTokens, color: '#10B981' },
-        { name: '僵尸 Skills', value: analysis.zombieSkillsTokens, color: '#EF4444' },
-        { name: '重复 Skills', value: analysis.duplicateSkillsTokens, color: '#F59E0B' },
-      ];
+  // Token 分布数据
+  const tokenDistribution = [
+    { name: '活跃 Skills', value: analysis.activeSkillsTokens, color: '#10B981' },
+    { name: '僵尸 Skills', value: analysis.zombieSkillsTokens, color: '#EF4444' },
+    { name: '重复 Skills', value: analysis.duplicateSkillsTokens, color: '#F59E0B' },
+  ];
 
   // 僵尸 Skills
   const zombieSkills = skills.filter(s => s.lastUsed && s.lastUsed < Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -70,58 +53,14 @@ export default function SystemPromptOptimization() {
   const duplicateSkills = skills.filter(s => s.duplicateWith && s.duplicateWith.length > 0);
 
   // 优化后的预估
-  const displayTokens = analysis.estimatedTokens ?? analysis.totalTokens ?? 0;
-  const optimizedTotal = displayTokens - analysis.savings;
+  const optimizedTotal = analysis.totalTokens - analysis.savings;
 
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">SystemPrompt 分析</h1>
+        <h1 className="text-2xl font-bold text-gray-900">SystemPrompt 优化</h1>
         <p className="text-gray-600 mt-1">分析 SystemPrompt 结构，识别优化空间</p>
       </div>
-
-      {/* 紧凑概览（与 dashboard 对齐） */}
-      {totalKB != null && (
-        <div className="bg-white p-6 rounded-lg shadow mb-6">
-          <div className="flex flex-wrap gap-4 items-center mb-4">
-            <span>
-              <strong>{totalKB} KB</strong> ≈ {(analysis.estimatedTokens || analysis.totalTokens).toLocaleString()} tokens
-            </span>
-            {usagePercent != null && (
-              <span>
-                Context Window: <strong>{usagePercent}%</strong> of Claude 4.6 Opus (200K)
-              </span>
-            )}
-            {teamCustomPercent != null && (
-              <span>
-                团队自定义: <strong>{teamCustomPercent}%</strong>{' '}
-                <span className="text-gray-500 text-sm">(Preset + Skills + Memory)</span>
-              </span>
-            )}
-          </div>
-          {analysis.layers?.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {analysis.layers.map((layer) => {
-                const pct = analysis.totalBytes ? (layer.bytes / analysis.totalBytes * 100).toFixed(1) : 0;
-                const kb = (layer.bytes / 1024).toFixed(1);
-                return (
-                  <span
-                    key={layer.id}
-                    className="inline-flex items-center gap-1.5 text-sm"
-                    title={`${layer.label}: ${kb}KB (${pct}%)`}
-                  >
-                    <span
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: layer.color }}
-                    />
-                    {layer.label} {kb}KB ({pct}%)
-                  </span>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Token 分布概览 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -157,7 +96,7 @@ export default function SystemPromptOptimization() {
           <div className="space-y-4">
             <div className="flex justify-between items-center pb-3 border-b">
               <span className="text-gray-600">当前 SystemPrompt</span>
-              <span className="text-xl font-bold text-gray-900">{displayTokens.toLocaleString()} tokens</span>
+              <span className="text-xl font-bold text-gray-900">{analysis.totalTokens.toLocaleString()} tokens</span>
             </div>
             
             <div className="flex justify-between items-center pb-3 border-b">
@@ -190,21 +129,6 @@ export default function SystemPromptOptimization() {
           </div>
         </div>
       </div>
-
-      {/* 完整 System Prompt（Markdown 渲染） */}
-      {analysis.assembledPrompt && (
-        <div className="bg-white rounded-lg shadow mb-6">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold">完整 System Prompt</h2>
-            <p className="text-sm text-gray-500 mt-1">按注入顺序展示，支持 Markdown 渲染</p>
-          </div>
-          <div className="p-6 overflow-x-auto">
-            <div className="system-prompt-markdown">
-              <ReactMarkdown>{analysis.assembledPrompt}</ReactMarkdown>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 僵尸 Skills */}
       {zombieSkills.length > 0 && (

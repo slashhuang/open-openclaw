@@ -11,7 +11,6 @@ export interface TokenThreshold {
 export interface SessionTokenUsage {
   sessionKey: string;
   sessionId: string;
-  user?: string;
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
@@ -99,7 +98,6 @@ export class TokenMonitorService {
       return {
         sessionKey,
         sessionId: session.sessionId,
-        user: session.userId || 'unknown',
         inputTokens: tokenUsage.input || 0,
         outputTokens: tokenUsage.output || 0,
         totalTokens: tokenUsage.total || 0,
