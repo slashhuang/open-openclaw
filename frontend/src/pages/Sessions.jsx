@@ -1,35 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { Table, Tag, Button, Space, Typography, Spin, Radio, message, Modal } from 'antd';
+import { useIntl } from 'react-intl';
 import { sessionsApi } from '../api';
 
-function SortableTh({ label, sortKey, currentSort, sortOrder, onSort }) {
-  const isActive = currentSort === sortKey;
-  const nextOrder = isActive && sortOrder === 'desc' ? 'asc' : 'desc';
-  return (
-    <th
-      style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
-      onClick={() => onSort(sortKey, nextOrder)}
-      title={`点击按 ${label} 排序${isActive ? ` (当前: ${sortOrder === 'desc' ? '降序' : '升序'})` : ''}`}
-    >
-      {label}
-      {isActive && <span style={{ marginLeft: '0.25rem', opacity: 0.8 }}>{sortOrder === 'desc' ? ' ↓' : ' ↑'}</span>}
-    </th>
-  );
-}
-
 export default function Sessions() {
+  const intl = useIntl();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('lastActive');
-  const [sortOrder, setSortOrder] = useState('desc');
 
   const fetchSessions = async () => {
     try {
       const data = await sessionsApi.list();
-      setSessions(data);
-    } catch (error) {
-      console.error('Failed to fetch sessions:', error);
+      setSessions(Array.isArray(data) ? data : []);
+    } catch (e) {
+      message.error(e?.message);
     } finally {
       setLoading(false);
     }
@@ -39,191 +25,141 @@ export default function Sessions() {
     fetchSessions();
   }, []);
 
-  const filteredSessions = sessions
-    .filter(session => {
-      if (filter === 'all') return true;
-      return session.status === filter;
-    })
-    .sort((a, b) => {
-      const getVal = (s, key) => {
-        switch (key) {
-          case 'lastActive': return s.lastActive ?? 0;
-          case 'duration': return s.duration ?? 0;
-          case 'totalTokens': return s.totalTokens ?? 0;
-          case 'utilization': return s.tokenUsage?.utilization ?? (s.tokenUsage?.limit && s.tokenUsage?.total ? Math.round((s.tokenUsage.total / s.tokenUsage.limit) * 100) : 0);
-          case 'status': return (s.status || '').toLowerCase();
-          case 'typeLabel': return (s.typeLabel || '').toLowerCase();
-          case 'user': return (s.user || '').toLowerCase();
-          default: return 0;
+  const filtered = useMemo(
+    () => sessions.filter((s) => (filter === 'all' ? true : s.status === filter)),
+    [sessions, filter],
+  );
+
+  const onKill = (sessionId) => {
+    Modal.confirm({
+      title: intl.formatMessage({ id: 'confirm.killSession' }),
+      onOk: async () => {
+        try {
+          await sessionsApi.kill(sessionId);
+          message.success('OK');
+          fetchSessions();
+        } catch (e) {
+          message.error(e?.message);
         }
-      };
-      const va = getVal(a, sortBy);
-      const vb = getVal(b, sortBy);
-      const cmp = typeof va === 'number' && typeof vb === 'number'
-        ? va - vb
-        : String(va).localeCompare(String(vb));
-      return sortOrder === 'desc' ? -cmp : cmp;
+      },
     });
-
-  const handleSort = (key, order) => {
-    setSortBy(key);
-    setSortOrder(order);
-  };
-
-  const handleKillSession = async (e, sessionId) => {
-    e.preventDefault();
-    if (!confirm('确定要终止这个会话吗？')) return;
-
-    try {
-      await sessionsApi.kill(sessionId);
-      await fetchSessions();
-    } catch (error) {
-      console.error('Failed to kill session:', error);
-      alert('终止会话失败');
-    }
   };
 
   const formatDuration = (ms) => {
-    if (!ms) return 'N/A';
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-
-    if (hours > 0) return `${hours}h ${minutes % 60}m`;
-    if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
-    return `${seconds}s`;
+    if (!ms) return '—';
+    const sec = Math.floor(ms / 1000);
+    const m = Math.floor(sec / 60);
+    const h = Math.floor(m / 60);
+    if (h > 0) return `${h}h ${m % 60}m`;
+    if (m > 0) return `${m}m ${sec % 60}s`;
+    return `${sec}s`;
   };
 
-  const formatTokenUtilization = (usage) => {
-    if (!usage || !usage.limit) return <span className="text-muted">N/A</span>;
-    const utilization = usage.utilization || Math.round((usage.total / usage.limit) * 100);
-    const color = utilization > 90 ? 'var(--danger)' : utilization > 70 ? 'var(--warning)' : 'var(--success)';
-    const warning = utilization > 80 ? ' ⚠️' : '';
-    return (
-      <div className="flex" style={{ alignItems: 'center', gap: '0.5rem' }}>
-        <div className="progress-bar" style={{ width: '80px' }}>
-          <div
-            className="progress-fill"
-            style={{ width: `${Math.min(utilization, 100)}%`, background: color }}
-          />
-        </div>
-        <span className="text-muted text-sm" style={{ color }}>{utilization}%{warning}</span>
-      </div>
-    );
-  };
+  const columns = [
+    {
+      title: 'Session',
+      key: 'sk',
+      render: (_, r) => (
+        <Link to={`/sessions/${encodeURIComponent(r.sessionId)}`}>
+          {(r.sessionKey || String(r.sessionId)).length > 48
+            ? `${(r.sessionKey || String(r.sessionId)).slice(0, 48)}…`
+            : r.sessionKey || r.sessionId}
+        </Link>
+      ),
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      sorter: (a, b) => String(a.status).localeCompare(String(b.status)),
+      render: (s) => <Tag color={s === 'active' ? 'green' : s === 'failed' ? 'red' : 'default'}>{s}</Tag>,
+    },
+    {
+      title: 'User',
+      key: 'user',
+      sorter: (a, b) => {
+        const ua = a.typeLabel === 'heartbeat' || a.typeLabel === 'cron' ? a.typeLabel : a.user || '';
+        const ub = b.typeLabel === 'heartbeat' || b.typeLabel === 'cron' ? b.typeLabel : b.user || '';
+        return String(ua).localeCompare(String(ub));
+      },
+      render: (_, r) =>
+        r.typeLabel === 'heartbeat' || r.typeLabel === 'cron' ? r.typeLabel : r.user || '—',
+    },
+    {
+      title: 'Last active',
+      dataIndex: 'lastActive',
+      defaultSortOrder: 'descend',
+      sorter: (a, b) => (a.lastActive || 0) - (b.lastActive || 0),
+      render: (t) => new Date(t).toLocaleString(intl.locale),
+    },
+    {
+      title: 'Duration',
+      dataIndex: 'duration',
+      sorter: (a, b) => (a.duration || 0) - (b.duration || 0),
+      render: formatDuration,
+    },
+    {
+      title: 'Tokens',
+      dataIndex: 'totalTokens',
+      sorter: (a, b) => (a.totalTokens || 0) - (b.totalTokens || 0),
+      render: (v) => (v != null ? v.toLocaleString() : '—'),
+    },
+    {
+      title: 'Util %',
+      key: 'util',
+      sorter: (a, b) => {
+        const pa = a.tokenUsage?.utilization ?? (a.tokenUsage?.limit ? (a.tokenUsage.total / a.tokenUsage.limit) * 100 : 0);
+        const pb = b.tokenUsage?.utilization ?? (b.tokenUsage?.limit ? (b.tokenUsage.total / b.tokenUsage.limit) * 100 : 0);
+        return pa - pb;
+      },
+      render: (_, r) => {
+        const u = r.tokenUsage;
+        if (!u?.limit) return '—';
+        const pct = Math.round(u.utilization ?? (u.total / u.limit) * 100);
+        return `${pct}%`;
+      },
+    },
+    {
+      title: intl.formatMessage({ id: 'common.detail' }),
+      key: 'act',
+      render: (_, r) => (
+        <Space>
+          <Link to={`/sessions/${encodeURIComponent(r.sessionId)}`}>
+            <Button size="small">{intl.formatMessage({ id: 'common.detail' })}</Button>
+          </Link>
+          {r.status === 'active' && (
+            <Button size="small" danger onClick={() => onKill(r.sessionId)}>
+              {intl.formatMessage({ id: 'common.kill' })}
+            </Button>
+          )}
+        </Space>
+      ),
+    },
+  ];
 
   if (loading) {
-    return <div className="loading">加载会话列表中...</div>;
+    return <Spin style={{ display: 'block', margin: 48 }} />;
   }
 
   return (
     <div>
-      <div className="flex flex-between" style={{ marginBottom: '1rem' }}>
-        <h2 className="card-title">会话列表</h2>
-        <div className="flex">
-          {['all', 'active', 'idle', 'completed', 'failed'].map(status => (
-            <button
-              key={status}
-              className={`btn ${filter === status ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setFilter(status)}
-            >
-              {status === 'all' ? '全部' : status}
-            </button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <Typography.Title level={4} style={{ margin: 0 }}>{intl.formatMessage({ id: 'sessions.title' })}</Typography.Title>
+        <Radio.Group value={filter} onChange={(e) => setFilter(e.target.value)} buttonStyle="solid">
+          <Radio.Button value="all">{intl.formatMessage({ id: 'common.all' })}</Radio.Button>
+          {['active', 'idle', 'completed', 'failed'].map((s) => (
+            <Radio.Button key={s} value={s}>{s}</Radio.Button>
           ))}
-        </div>
+        </Radio.Group>
       </div>
-      <p className="text-muted" style={{ fontSize: '0.7rem', marginBottom: '1rem' }}>
-        点击表头切换排序（↓ 降序 ↑ 升序）
-      </p>
-
-      <div className="card">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Session Key</th>
-              <th>状态</th>
-              <th>用户</th>
-              <th>最后活跃</th>
-              <th>持续时间</th>
-              <th>Token 利用率</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredSessions.map(session => (
-              <tr key={session.sessionId}>
-                <td>
-                  <Link to={`/sessions/${session.sessionId}`} style={{ color: 'var(--primary)' }}>
-                    {session.sessionKey || session.sessionId.slice(0, 8)}-{session.sessionId.slice(8, 12)}...
-                  </Link>
-                </td>
-                <td>
-                  {session.totalTokens != null ? (
-                    <span title={`${session.totalTokens.toLocaleString()} tokens`}>
-                      {(session.totalTokens / 1000).toFixed(1)}k
-                    </span>
-                  ) : (
-                    <span className="text-muted">-</span>
-                  )}
-                </td>
-                <td>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    {session.model && (
-                      <span className="text-sm" title={session.model}>
-                        {session.model.split('/').pop()?.slice(0, 24) || session.model}
-                      </span>
-                    )}
-                    {session.tokenUsage
-                      ? formatTokenUtilization(session.tokenUsage)
-                      : !session.model && <span className="text-muted">-</span>}
-                  </div>
-                </td>
-                <td>
-                  <span className={`session-status ${session.status}`}>
-                    {session.status}
-                  </span>
-                </td>
-                <td className="text-muted">{(session.typeLabel === 'heartbeat' || session.typeLabel === 'cron') ? session.typeLabel : (session.user || 'unknown')}</td>
-                <td className="text-muted text-sm">
-                  {new Date(session.lastActive).toLocaleString('zh-CN')}
-                </td>
-                <td>
-                  {session.tokenUsage ? formatTokenUtilization(session.tokenUsage) : (
-                    <span className="text-muted">-</span>
-                  )}
-                </td>
-                <td>
-                  <div className="flex">
-                    <Link
-                      to={`/sessions/${session.sessionId}`}
-                      className="btn btn-secondary"
-                      style={{ padding: '0.25rem 0.75rem' }}
-                    >
-                      详情
-                    </Link>
-                    {session.status === 'active' && (
-                      <button
-                        className="btn btn-danger"
-                        style={{ padding: '0.25rem 0.75rem' }}
-                        onClick={(e) => handleKillSession(e, session.sessionId)}
-                      >
-                        终止
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {filteredSessions.length === 0 && (
-              <tr>
-                <td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
-                  暂无会话
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>{intl.formatMessage({ id: 'sessions.sortHint' })}</Typography.Text>
+      <Table
+        style={{ marginTop: 8 }}
+        rowKey="sessionId"
+        dataSource={filtered}
+        columns={columns}
+        locale={{ emptyText: intl.formatMessage({ id: 'sessions.empty' }) }}
+        scroll={{ x: true }}
+      />
     </div>
   );
 }

@@ -1,168 +1,135 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
+import { Card, Select, Button, Space, Typography, Spin, theme } from 'antd';
+import { useIntl } from 'react-intl';
 import { logsApi } from '../api';
 
 export default function Logs() {
+  const intl = useIntl();
+  const { token } = theme.useToken();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterLevel, setFilterLevel] = useState('all');
   const [socketConnected, setSocketConnected] = useState(false);
   const logsEndRef = useRef(null);
   const socketRef = useRef(null);
-  const containerRef = useRef(null);
-  const userHasScrolledRef = useRef(false);
+  const userScrolledRef = useRef(false);
 
   useEffect(() => {
-    // 加载初始日志
-    const fetchLogs = async () => {
+    (async () => {
       try {
         const data = await logsApi.getRecent(200);
-        setLogs(data);
-      } catch (error) {
-        console.error('Failed to fetch logs:', error);
+        setLogs(Array.isArray(data) ? data : []);
+      } catch (e) {
+        console.error(e);
       } finally {
         setLoading(false);
       }
-    };
+    })();
 
-    fetchLogs();
-
-    // 连接 WebSocket
     socketRef.current = io(window.location.origin, {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
     });
-
     socketRef.current.on('connect', () => {
       setSocketConnected(true);
       socketRef.current.emit('logs:subscribe');
     });
-
-    socketRef.current.on('disconnect', () => {
-      setSocketConnected(false);
-    });
-
+    socketRef.current.on('disconnect', () => setSocketConnected(false));
     socketRef.current.on('logs:new', (log) => {
-      setLogs(prev => {
-        const newLogs = [...prev, log];
-        return newLogs.slice(-500); // 最多保留 500 条
-      });
+      setLogs((prev) => [...prev, log].slice(-500));
     });
-
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-      }
-    };
+    return () => socketRef.current?.disconnect();
   }, []);
 
   useEffect(() => {
-    // 只在用户没有手动滚动时才自动滚动到底部
-    if (logsEndRef.current && !userHasScrolledRef.current) {
+    if (logsEndRef.current && !userScrolledRef.current) {
       logsEndRef.current.scrollIntoView({ behavior: 'auto' });
     }
   }, [logs]);
 
-  const filteredLogs = logs.filter(log => {
-    if (filterLevel === 'all') return true;
-    return log.level === filterLevel;
-  });
+  const filtered = logs.filter((l) => (filterLevel === 'all' ? true : l.level === filterLevel));
 
-  const getLevelColor = (level) => {
+  const levelColor = (level) => {
     switch (level) {
-      case 'error': return '#f56565';
-      case 'warn': return '#ed8936';
-      case 'debug': return '#9f7aea';
-      default: return '#48bb78';
+      case 'error':
+        return token.colorError;
+      case 'warn':
+        return token.colorWarning;
+      case 'debug':
+        return token.colorInfo;
+      default:
+        return token.colorSuccess;
     }
   };
 
-  const clearLogs = () => {
-    setLogs([]);
-  };
-
-  // 格式化日志内容，处理对象序列化
-  const formatLogContent = (content) => {
-    if (typeof content !== 'string') {
-      return JSON.stringify(content, null, 2);
-    }
-    return content;
-  };
+  const fmt = (c) => (typeof c === 'string' ? c : JSON.stringify(c, null, 2));
 
   if (loading) {
-    return <div className="loading">加载日志...</div>;
+    return <Spin style={{ display: 'block', margin: 48 }} />;
   }
 
   return (
     <div>
-      <div className="flex flex-between" style={{ marginBottom: '1.5rem' }}>
-        <h2 className="card-title">实时日志</h2>
-        <div className="flex">
-          <span className={`text-sm ${socketConnected ? 'text-success' : 'text-danger'}`} style={{ marginRight: '1rem' }}>
-            {socketConnected ? '● 实时连接中' : '○ 未连接'}
-          </span>
-          <select
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <Typography.Title level={4} style={{ margin: 0 }}>{intl.formatMessage({ id: 'logs.title' })}</Typography.Title>
+        <Space wrap>
+          <Typography.Text type={socketConnected ? 'success' : 'secondary'}>
+            {socketConnected ? intl.formatMessage({ id: 'logs.connected' }) : intl.formatMessage({ id: 'logs.disconnected' })}
+          </Typography.Text>
+          <Select
+            style={{ width: 120 }}
             value={filterLevel}
-            onChange={(e) => setFilterLevel(e.target.value)}
-            className="form-input"
-            style={{ width: 'auto', marginRight: '0.5rem' }}
-          >
-            <option value="all">全部级别</option>
-            <option value="info">Info</option>
-            <option value="warn">Warn</option>
-            <option value="error">Error</option>
-            <option value="debug">Debug</option>
-          </select>
-          <button
-            className="btn btn-secondary"
+            onChange={setFilterLevel}
+            options={[
+              { value: 'all', label: intl.formatMessage({ id: 'common.all' }) },
+              { value: 'info', label: 'info' },
+              { value: 'warn', label: 'warn' },
+              { value: 'error', label: 'error' },
+              { value: 'debug', label: 'debug' },
+            ]}
+          />
+          <Button
             onClick={() => {
-              // 点击时滚动到底部
+              userScrolledRef.current = false;
               logsEndRef.current?.scrollIntoView({ behavior: 'auto' });
-              userHasScrolledRef.current = false;
             }}
-            style={{ marginRight: '0.5rem' }}
           >
-            滚动到底部
-          </button>
-          <button className="btn btn-danger" onClick={clearLogs}>清空日志</button>
-        </div>
+            {intl.formatMessage({ id: 'logs.scrollBottom' })}
+          </Button>
+          <Button danger onClick={() => setLogs([])}>{intl.formatMessage({ id: 'logs.clear' })}</Button>
+        </Space>
       </div>
-
-      <div className="card">
-        <div className="log-container" ref={containerRef} style={{ maxHeight: '70vh' }}>
-          {filteredLogs.map((log, index) => (
-            <div key={index} className="log-line">
-              <span style={{ color: '#666', marginRight: '0.5rem', flexShrink: 0 }}>
-                {new Date(log.timestamp).toLocaleTimeString('zh-CN', { hour12: false })}
-              </span>
-              <span
-                style={{
-                  color: getLevelColor(log.level),
-                  marginRight: '0.5rem',
-                  fontWeight: '600',
-                  width: '50px',
-                  flexShrink: 0,
-                  display: 'inline-block',
-                }}
-              >
-                [{log.level.toUpperCase()}]
-              </span>
-              <span style={{ color: '#e2e8f0', wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>
-                {formatLogContent(log.content)}
-              </span>
+      <Card styles={{ body: { padding: 12 } }}>
+        <div
+          style={{
+            maxHeight: '70vh',
+            overflow: 'auto',
+            fontFamily: 'monospace',
+            fontSize: 12,
+            background: token.colorFillQuaternary,
+            padding: 8,
+            borderRadius: token.borderRadius,
+          }}
+          onScroll={(e) => {
+            const el = e.target;
+            const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+            userScrolledRef.current = !bottom;
+          }}
+        >
+          {filtered.map((log, i) => (
+            <div key={i} style={{ marginBottom: 4, wordBreak: 'break-all' }}>
+              <Typography.Text type="secondary">{new Date(log.timestamp).toLocaleTimeString(intl.locale, { hour12: false })}</Typography.Text>{' '}
+              <span style={{ color: levelColor(log.level), fontWeight: 600 }}>[{String(log.level).toUpperCase()}]</span>{' '}
+              <span style={{ color: token.colorText }}>{fmt(log.content)}</span>
             </div>
           ))}
           <div ref={logsEndRef} />
-          {filteredLogs.length === 0 && (
-            <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '2rem' }}>
-              暂无日志
-            </div>
-          )}
         </div>
-        <div className="text-muted text-sm mt-4">
-          显示 {filteredLogs.length} 条日志 {logs.length !== filteredLogs.length && `(过滤前 ${logs.length} 条)`}
-        </div>
-      </div>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          {filtered.length} / {logs.length}
+        </Typography.Text>
+      </Card>
     </div>
   );
 }
