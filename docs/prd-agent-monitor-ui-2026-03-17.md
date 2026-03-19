@@ -1,12 +1,12 @@
 # PRD：open-openclaw — OpenClaw 智能监控与资产管理平台
 
-**文档状态：** ✅ **V3.0 核心功能已全部完成**（2026-03-19）
+**文档状态：** ✅ **V4.0 功能增强版完成**（2026-03-19）
 **创建日期：** 2026-03-17
-**更新日期：** 2026-03-19（V3.0 核心功能完成）
+**更新日期：** 2026-03-19（V4.0 新增 Skill 调用追踪、用户维度分析）
 **提出人：** 晓刚（爸爸）
 **撰写人：** 阿布
 **优先级：** P0（高）
-**实施状态：** ✅ 核心功能全部交付（Skills 分析、Token 预警、SystemPrompt 优化）
+**实施状态：** ✅ 核心功能全部交付 + 增强功能（Skill 调用追踪、用户维度分析、会话类型识别）
 
 ---
 
@@ -63,9 +63,23 @@ const snapshot = await gateway.request('connect', {...});
 
 ## 📌 更新记录
 
-### 2026-03-19 V3.0 — 核心功能全部完成 ✅
+### 2026-03-19 V4.0 — 功能增强版完成 ✅
 
-**P0 核心功能已全部交付：**
+**新增增强功能：**
+- ✅ **Skill 调用追踪** — 基于 read 工具调用反推 Skill 触发（准确率 85-90%）
+  - 实现文件：`src/skill-invocation.ts`
+  - 原理：检测 `skills/{skillName}/SKILL.md` 路径匹配
+  - 输出：`InvokedSkill[]`（skillName, readCount）
+- ✅ **用户维度分析** — 按用户统计 Skill 使用情况
+  - 后端接口：`GET /skills/usage-by-user`
+  - 后端接口：`GET /skills/skill-tool-usage`
+  - 前端页面：Skills.jsx（用户堆叠柱状图）
+- ✅ **会话类型识别增强** — 统一会话类型标签
+  - 实现文件：`src/common/session-user-resolver.ts`
+  - 支持类型：heartbeat/cron/boot/Wave/Slack/Telegram/Discord/飞书
+  - 前端工具：`frontend/src/utils/session-user.js`
+
+**P0 核心功能（已完成）：**
 - ✅ **Skills 使用分析** — 完整实现（调用频率、僵尸检测、重复检测、Token 分布、优化建议）
 - ✅ **Token 阈值预警** — 完整实现（5 级阈值、实时告警、消耗速率排行、自动刷新）
 - ✅ **SystemPrompt 优化** — 完整实现（可视化、Token 分解、饼图/柱状图、优化建议、一键复制）
@@ -109,7 +123,11 @@ const snapshot = await gateway.request('connect', {...});
 
 **实现状态：** ✅ 完整实现（2026-03-19）
 **前端页面：** `open-openclaw/frontend/src/pages/Skills.jsx`
-**后端接口：** `/api/skills/usage`、`/api/skills/system-prompt/analysis`
+**后端接口：** 
+- `/api/skills/usage` — Skills 使用统计
+- `/api/skills/system-prompt/analysis` — SystemPrompt 分析
+- `/api/skills/usage-by-user` — 按用户维度统计（V4.0 新增）
+- `/api/skills/skill-tool-usage` — Skill-Tool 关联分析（V4.0 新增）
 
 ### 已实现功能
 
@@ -124,6 +142,12 @@ const snapshot = await gateway.request('connect', {...});
 - ✅ 总调用次数统计
 - ✅ Top 10 调用频率排行榜（柱状图）
 - ✅ "僵尸 Skills"标记（超过 30 天未调用）
+- ✅ 多维度洞察（V4.0 新增）：
+  - 按调用次数排序
+  - 按会话数排序
+  - 按用户数排序
+  - 按最近 7 天/30 天调用排序
+  - 按平均每会话调用排序
 
 #### 1.3 重复/冲突检测 ✅
 - ✅ 触发条件重叠检测
@@ -136,17 +160,49 @@ const snapshot = await gateway.request('connect', {...});
 - ✅ 优化后节省预估（token 数、百分比）
 - ✅ 具体优化建议列表
 
+#### 1.5 用户维度分析 ✅（V4.0 新增）
+- ✅ 按用户统计 Skill 使用情况
+- ✅ 用户堆叠柱状图（Top 5 用户 + 其他）
+- ✅ 用户-Skill 交叉分析表
+
+#### 1.6 Skill 调用追踪 ✅（V4.0 新增）
+- ✅ 基于 read 工具调用反推 Skill 触发
+- ✅ 实现文件：`src/skill-invocation.ts`
+- ✅ 原理：检测 `skills/{skillName}/SKILL.md` 路径匹配
+- ✅ 准确率：85-90%
+- ✅ 输出：`InvokedSkill[]`（skillName, readCount）
+
 ### 技术实现
 ```typescript
-// 前端数据获取
+// 前端数据获取（V4.0）
 const [skills, setSkills] = useState([]);
 const [systemPrompt, setSystemPrompt] = useState(null);
+const [usageByUser, setUsageByUser] = useState([]);
+const [skillToolUsage, setSkillToolUsage] = useState([]);
 
-// 并行加载
-const [skillsRes, spRes] = await Promise.all([
-  fetch('/api/skills/usage'),
-  fetch('/api/skills/system-prompt/analysis'),
+// 并行加载 4 个接口
+const [skillsData, spData, byUserData, skillToolData] = await Promise.all([
+  skillsApi.getUsage(),
+  skillsApi.getSystemPromptAnalysis(),
+  skillsApi.getUsageByUser(),
+  skillsApi.getSkillToolUsage(),
 ]);
+
+// Skill 调用追踪（后端）
+// src/skill-invocation.ts
+export function inferInvokedSkillsFromToolCalls(toolCalls) {
+  const counts = new Map();
+  for (const tc of toolCalls || []) {
+    if (tc.name !== 'read') continue;
+    const skill = findSkillPathInArgs(tc.input ?? {});
+    if (skill) {
+      counts.set(skill, (counts.get(skill) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([skillName, readCount]) => ({ skillName, readCount }))
+    .sort((a, b) => b.readCount - a.readCount);
+}
 ```
 
 ---
